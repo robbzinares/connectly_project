@@ -1,3 +1,4 @@
+from contextvars import Token
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.response import Response
 from rest_framework import status
@@ -6,6 +7,13 @@ from django.contrib.auth.models import User
 from .serializers import PostSerializer, UserSerializer
 from .models import Post
 from django.middleware.csrf import get_token
+from django.contrib.auth import authenticate
+from rest_framework.permissions import IsAuthenticated
+from .permissions import IsPostAuthor
+from rest_framework.views import APIView
+from django.http import Http404
+from rest_framework.authentication import TokenAuthentication
+
 
 # CSRF Token View
 @api_view(["GET"])
@@ -84,3 +92,90 @@ def user_list(request):
     users = User.objects.all()
     serializer = UserSerializer(users, many=True)
     return Response(serializer.data)
+
+@api_view(["POST"])
+@permission_classes([AllowAny])
+def login_user(request):
+    username = request.data.get("username")
+    password = request.data.get("password")
+
+    user = authenticate(username=username, password=password)
+    if user is not None:
+        # Generate or get token for authenticated user
+        token, created = Token.objects.get_or_create(user=user)
+        return Response({"message": "Authentication successful!", "token": token.key})
+    else:
+        return Response({"error": "Invalid credentials."}, status=400)
+    
+@api_view(['GET', 'PUT', 'PATCH', 'DELETE'])
+@permission_classes([IsAuthenticated, IsPostAuthor])  # ✅ Apply permissions
+def post_detail(request, pk):
+    try:
+        post = Post.objects.get(pk=pk)
+    except Post.DoesNotExist:
+        return Response({'error': 'Post not found'}, status=status.HTTP_404_NOT_FOUND)
+
+    # This will automatically check if the user is the author
+    if request.method == 'GET':
+        serializer = PostSerializer(post)
+        return Response(serializer.data)
+
+    if request.method in ['PUT', 'PATCH']:  # Update post
+        serializer = PostSerializer(post, data=request.data, partial=(request.method == 'PATCH'))
+        if serializer.is_valid():
+            serializer.save()
+            return Response(serializer.data)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+    elif request.method == 'DELETE':  # Delete post
+        post.delete()
+        return Response({'message': 'Post deleted'}, status=status.HTTP_204_NO_CONTENT)
+    
+class PostDetailView(APIView):
+    """
+    Retrieve, update, or delete a post instance.
+    """
+    permission_classes = [IsAuthenticated, IsPostAuthor]
+
+    def get_object(self, pk):
+        try:
+            return Post.objects.get(pk=pk)
+        except Post.DoesNotExist:
+            raise Http404
+
+    def get(self, request, pk):
+        post = self.get_object(pk)
+        self.check_object_permissions(request, post)  # Enforce IsPostAuthor
+        serializer = PostSerializer(post)
+        return Response(serializer.data)
+
+    def put(self, request, pk):
+        post = self.get_object(pk)
+        self.check_object_permissions(request, post)
+        serializer = PostSerializer(post, data=request.data)
+        if serializer.is_valid():
+            serializer.save()
+            return Response(serializer.data)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+    def patch(self, request, pk):
+        post = self.get_object(pk)
+        self.check_object_permissions(request, post)
+        serializer = PostSerializer(post, data=request.data, partial=True)
+        if serializer.is_valid():
+            serializer.save()
+            return Response(serializer.data)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+    def delete(self, request, pk):
+        post = self.get_object(pk)
+        self.check_object_permissions(request, post)
+        post.delete()
+        return Response({'message': 'Post deleted'}, status=status.HTTP_204_NO_CONTENT)
+    
+class ProtectedView(APIView):
+    authentication_classes = [TokenAuthentication]
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        return Response({"message": "Authenticated!"})  

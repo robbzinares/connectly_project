@@ -1,18 +1,37 @@
 # Virtual environment
 venv/
-*.pyc
+env/
+
+# Python cache files
 __pycache__/
+*.py[cod]
+*$py.class
 
-# Django secrets & settings
+# Django settings & secret files
+*.env
+*.secret
+config/settings_local.py
+
+# Database files (if using SQLite)
+db.sqlite3
 *.sqlite3
-*.log
-.env
 
-# IDE files
-.vscode/
-.idea/
-
-# Migrations (optional)
+# Django migrations (optional)
 **/migrations/*.py
 !**/migrations/__init__.py
 
+# Logs & debug files
+*.log
+*.out
+*.pid
+
+# Media & Static files
+media/
+uploads/
+staticfiles/
+static/
+
+# IDE & OS-specific files
+.vscode/
+.idea/
+.DS_Store
