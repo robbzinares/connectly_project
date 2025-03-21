@@ -1,0 +1,6 @@
+django
+djangorestframework
+django-extensions
+Werkzeug
+argon2-cffi
+pyOpenSSL

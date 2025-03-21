@@ -4,7 +4,7 @@ from rest_framework.response import Response
 from rest_framework import status
 from rest_framework.permissions import AllowAny
 from django.contrib.auth.models import User
-from .serializers import PostSerializer, UserSerializer
+from posts.serializers import PostSerializer, UserSerializer
 from .models import Post
 from django.middleware.csrf import get_token
 from django.contrib.auth import authenticate
@@ -13,7 +13,8 @@ from .permissions import IsPostAuthor
 from rest_framework.views import APIView
 from django.http import Http404
 from rest_framework.authentication import TokenAuthentication
-from .factories import PostFactory
+from .factories.post_factory import PostFactory
+from .singletons.logger_singleton import LoggerSingleton
 
 
 # CSRF Token View
@@ -194,3 +195,7 @@ class CreatePostView(APIView):
             return Response({'message': 'Post created successfully!', 'post_id': post.id}, status=status.HTTP_201_CREATED)
         except ValueError as e:
             return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
+        
+
+logger = LoggerSingleton().get_logger()
+logger.info("API initialized successfully.")

@@ -1,4 +1,4 @@
-from .models import Post
+from posts.models import Post
 
 class PostFactory:
     @staticmethod
@@ -6,10 +6,13 @@ class PostFactory:
         if post_type not in dict(Post.POST_TYPES):
             raise ValueError("Invalid post type")
 
-        # Add validation for specific post types
-        if post_type == 'image' and (not metadata or 'file_size' not in metadata):
+        # Ensure metadata is always a dictionary
+        metadata = metadata or {}
+
+        # Validate type-specific requirements
+        if post_type == 'image' and 'file_size' not in metadata:
             raise ValueError("Image posts require 'file_size' in metadata")
-        if post_type == 'video' and (not metadata or 'duration' not in metadata):
+        if post_type == 'video' and 'duration' not in metadata:
             raise ValueError("Video posts require 'duration' in metadata")
 
         return Post.objects.create(
