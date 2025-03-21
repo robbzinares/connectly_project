@@ -8,4 +8,7 @@ urlpatterns = [
     path("api/", include("posts.urls")),  # Include posts app URLs
     path("api-auth/", include("rest_framework.urls")),  # DRF login/logout views
     path("api-token-auth/", obtain_auth_token, name="api-token-auth"),  # Token Authentication
+    path("api/", include("comments.urls")),
+    path("api/", include("likes.urls")),
+    path("api/users/", include("users.urls")),
 ]
