@@ -15,6 +15,7 @@ from django.http import Http404
 from rest_framework.authentication import TokenAuthentication
 from .factories.post_factory import PostFactory
 from .singletons.logger_singleton import LoggerSingleton
+from django.core.paginator import Paginator, EmptyPage, PageNotAnInteger
 
 
 # CSRF Token View
@@ -199,3 +200,24 @@ class CreatePostView(APIView):
 
 logger = LoggerSingleton().get_logger()
 logger.info("API initialized successfully.")
+
+
+class NewsFeedView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        posts = Post.objects.all().order_by("-created_at")  # Sort by newest first
+        paginator = Paginator(posts, 10)  # Show 10 posts per page
+        page = request.GET.get("page", 1)
+
+        try:
+            page = int(page)  # Ensure page is an integer
+            paginated_posts = paginator.page(page)
+        except PageNotAnInteger:
+            page = 1
+            paginated_posts = paginator.page(page)
+        except EmptyPage:
+            return Response({"error": "Page not found"}, status=status.HTTP_404_NOT_FOUND)
+
+        serializer = PostSerializer(paginated_posts, many=True)
+        return Response({"posts": serializer.data, "page": page, "total_pages": paginator.num_pages})

@@ -7,6 +7,7 @@ from .views import (
     create_user,
     CreatePostView,
     ProtectedView,
+    NewsFeedView,
 )
 from rest_framework.authtoken.views import obtain_auth_token
 
@@ -19,4 +20,5 @@ urlpatterns = [
     path("api-token-auth/", obtain_auth_token, name="api-token-auth"),
     path("protected/", ProtectedView.as_view(), name="protected"),
     path("create-post/", CreatePostView.as_view(), name="create-post"),  # Factory-based Post Creation
+    path("feed/", NewsFeedView.as_view(), name="news-feed"),
 ]
