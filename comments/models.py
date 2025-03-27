@@ -10,3 +10,13 @@ class Comment(models.Model):
 
     def __str__(self):
         return f"{self.user.username} on {self.post.title}"
+
+    def is_visible_to(self, user):
+        """
+        Check if the comment is visible based on the post's privacy settings.
+        - Public posts: Everyone can see comments.
+        - Private posts: Only the post owner and comment author can see comments.
+        """
+        if self.post.privacy == "public":
+            return True
+        return self.post.author == user or self.user == user

@@ -12,3 +12,13 @@ class Like(models.Model):
 
     def __str__(self):
         return f"{self.user.username} liked {self.post.title}"
+
+    def is_visible_to(self, user):
+        """
+        Determines if the like should be visible to a specific user based on post privacy.
+        - Public posts: Everyone can see likes.
+        - Private posts: Only the post owner and the user who liked can see the like.
+        """
+        if self.post.privacy == "public":
+            return True
+        return self.post.author == user or self.user == user

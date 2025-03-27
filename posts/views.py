@@ -16,7 +16,7 @@ from rest_framework.authentication import TokenAuthentication
 from .factories.post_factory import PostFactory
 from .singletons.logger_singleton import LoggerSingleton
 from django.core.paginator import Paginator, EmptyPage, PageNotAnInteger
-
+from django.db.models import Q
 
 # CSRF Token View
 @api_view(["GET"])
@@ -140,21 +140,24 @@ class PostDetailView(APIView):
     """
     permission_classes = [IsAuthenticated, IsPostAuthor]
 
-    def get_object(self, pk):
+    def get_object(self, pk, request):
         try:
-            return Post.objects.get(pk=pk)
+            post = Post.objects.get(pk=pk)
+            # Enforce privacy: Only owner can access private posts
+            if post.privacy == "private" and post.author != request.user:
+                raise Http404
+            return post
         except Post.DoesNotExist:
             raise Http404
 
     def get(self, request, pk):
-        post = self.get_object(pk)
-        self.check_object_permissions(request, post)  # Enforce IsPostAuthor
+        post = self.get_object(pk, request)
         serializer = PostSerializer(post)
         return Response(serializer.data)
 
     def put(self, request, pk):
-        post = self.get_object(pk)
-        self.check_object_permissions(request, post)
+        post = self.get_object(pk, request)
+        self.check_object_permissions(request, post)  # Ensures only author can edit
         serializer = PostSerializer(post, data=request.data)
         if serializer.is_valid():
             serializer.save()
@@ -162,7 +165,7 @@ class PostDetailView(APIView):
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
     def patch(self, request, pk):
-        post = self.get_object(pk)
+        post = self.get_object(pk, request)
         self.check_object_permissions(request, post)
         serializer = PostSerializer(post, data=request.data, partial=True)
         if serializer.is_valid():
@@ -171,7 +174,7 @@ class PostDetailView(APIView):
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
     def delete(self, request, pk):
-        post = self.get_object(pk)
+        post = self.get_object(pk, request)
         self.check_object_permissions(request, post)
         post.delete()
         return Response({'message': 'Post deleted'}, status=status.HTTP_204_NO_CONTENT)
@@ -206,18 +209,31 @@ class NewsFeedView(APIView):
     permission_classes = [IsAuthenticated]
 
     def get(self, request):
-        posts = Post.objects.all().order_by("-created_at")  # Sort by newest first
-        paginator = Paginator(posts, 10)  # Show 10 posts per page
+        """
+        Fetch paginated news feed posts:
+        - Show public posts.
+        - Show private posts only if the requesting user is the author.
+        - (Optional) Handle friends-only visibility if implemented.
+        """
+        posts = Post.objects.filter(
+            Q(privacy="public") | Q(author=request.user)
+        ).order_by("-created_at").select_related("author")  # Optimized query
+        
+        paginator = Paginator(posts, 10)  # Paginate with 10 posts per page
         page = request.GET.get("page", 1)
 
         try:
             page = int(page)  # Ensure page is an integer
             paginated_posts = paginator.page(page)
-        except PageNotAnInteger:
+        except (PageNotAnInteger, ValueError):  # Handle non-integer values
             page = 1
             paginated_posts = paginator.page(page)
-        except EmptyPage:
+        except EmptyPage:  # Handle out-of-range pages
             return Response({"error": "Page not found"}, status=status.HTTP_404_NOT_FOUND)
 
         serializer = PostSerializer(paginated_posts, many=True)
-        return Response({"posts": serializer.data, "page": page, "total_pages": paginator.num_pages})
+        return Response({
+            "posts": serializer.data,
+            "page": page,
+            "total_pages": paginator.num_pages
+        })
