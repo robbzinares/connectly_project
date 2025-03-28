@@ -17,6 +17,8 @@ from .factories.post_factory import PostFactory
 from .singletons.logger_singleton import LoggerSingleton
 from django.core.paginator import Paginator, EmptyPage, PageNotAnInteger
 from django.db.models import Q
+from django.core.cache import cache
+
 
 # CSRF Token View
 @api_view(["GET"])
@@ -209,31 +211,48 @@ class NewsFeedView(APIView):
     permission_classes = [IsAuthenticated]
 
     def get(self, request):
-        """
-        Fetch paginated news feed posts:
-        - Show public posts.
-        - Show private posts only if the requesting user is the author.
-        - (Optional) Handle friends-only visibility if implemented.
-        """
+        page = request.GET.get("page", 1)
+        try:
+            page = int(page)  # Convert page to integer early
+        except ValueError:
+            page = 1  # Default to page 1 if invalid input
+
+        # Generate cache key with latest post timestamp
+        latest_post = Post.objects.order_by("-created_at").first()
+        latest_timestamp = latest_post.created_at.timestamp() if latest_post else 0
+        cache_key = f"news_feed_{request.user.id}_page_{page}_{latest_timestamp}"
+
+        cached_data = cache.get(cache_key)
+        if cached_data:
+            return Response(cached_data)
+
         posts = Post.objects.filter(
             Q(privacy="public") | Q(author=request.user)
-        ).order_by("-created_at").select_related("author")  # Optimized query
-        
-        paginator = Paginator(posts, 10)  # Paginate with 10 posts per page
-        page = request.GET.get("page", 1)
+        ).order_by("-created_at").select_related("author")
+
+        paginator = Paginator(posts, 10)
+
+        # 🔥 **Fix: Handle out-of-range page numbers manually**
+        total_pages = paginator.num_pages
+        if page > total_pages:  # If requested page is greater than total available pages
+            return Response({"error": "Page not found"}, status=status.HTTP_404_NOT_FOUND)
 
         try:
-            page = int(page)  # Ensure page is an integer
             paginated_posts = paginator.page(page)
-        except (PageNotAnInteger, ValueError):  # Handle non-integer values
+        except PageNotAnInteger:
             page = 1
             paginated_posts = paginator.page(page)
-        except EmptyPage:  # Handle out-of-range pages
+        except EmptyPage:  # 🚀 Redundant now, but still good practice
             return Response({"error": "Page not found"}, status=status.HTTP_404_NOT_FOUND)
 
         serializer = PostSerializer(paginated_posts, many=True)
-        return Response({
+        response_data = {
             "posts": serializer.data,
             "page": page,
-            "total_pages": paginator.num_pages
-        })
+            "total_pages": total_pages
+        }
+
+        if paginated_posts:  # Cache only when there is valid data
+            cache.set(cache_key, response_data, timeout=300)
+
+        return Response(response_data)
